@@ -1,12 +1,12 @@
 (defproject com.brunobonacci/ring-boost "0.1.0-SNAPSHOT"
-  :description "I library to boost performances of Clojure web applications with off-heap serverside caching."
+  :description "A library to boost performances of Clojure web applications with off-heap serverside caching."
 
   :url "https://github.com/BrunoBonacci/ring-boost"
 
   :license {:name "Apache License 2.0"
             :url "http://www.apache.org/licenses/LICENSE-2.0"}
 
-  :scm {:name "git" :url "https://github.com/BrunoBonacci/ring-boost"}
+  :scm {:name "git" :url "https://github.com/BrunoBonacci/ring-boost.git"}
 
   :dependencies [[org.clojure/clojure "1.8.0"]
                  [com.brunobonacci/clj-sophia "0.3.0"]
