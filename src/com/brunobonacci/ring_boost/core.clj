@@ -84,18 +84,26 @@
           (if-not cacheable-profilie?
             (handler req)
             ;;if cacheable, then let's check in the cache
-            (let [key*    (:key-maker cacheable-profilie?)
-                  key     (key* req)
-                  payload (sph/get-value cache "data" key)]
-              (if payload
+            (let [key*      (:key-maker cacheable-profilie?)
+                  key       (key* req)
+                  cached    (sph/get-value cache "cache" key)
+                  cache-for (:cache-for cacheable-profilie?)
+                  elapsed   (- (System/currentTimeMillis)
+                               (or (:timestamp cached) 0))
+                  expired?  (> elapsed (* (if (= :forever cache-for)
+                                           Long/MAX_VALUE cache-for) 1000))]
+              (if (and cached (not expired?))
                 ;; cache hit
                 ;; 1 - update stats
-                (assoc-in payload [:headers "X-RING-BOOST"] "CACHE-HIT" )
+                (assoc-in (:payload cached)
+                          [:headers "X-RING-BOOST"] "CACHE-HIT" )
                 ;; cache miss
                 (let [{:keys [status] :as resp} (handler req)]
                   (if (< status 300)
-                    (assoc-in (sph/set-value! cache "data" key resp)
-                              [:headers "X-RING-BOOST"] "CACHE-MISS" )
+                    (let [data {:payload resp
+                                :timestamp (System/currentTimeMillis)}]
+                      (sph/set-value! cache "cache" key data)
+                      (assoc-in resp [:headers "X-RING-BOOST"] "CACHE-MISS"))
                     resp))))))))))
 
 
@@ -114,13 +122,13 @@
 
   (def boost-config
     {:enabled true
-     :storage {:sophia.path "/tmp/cache" :dbs ["data" "stats"]}
+     :storage {:sophia.path "/tmp/ring-boost-cache" :dbs ["cache" "stats"]}
      :profiles
      [{:profile :forever
        :match [:and
                [:uri :starts-with? "/pictures/"]
                [:request-method = :get]]
-       :cache-for :forever}
+       :cache-for 5}
 
 
       {:profile :private-pages
@@ -128,13 +136,13 @@
                [:uri :starts-with? "/profiles/"]
                [:method = :get]
                [(comp :user-id :params) not= nil]]
-       :cache-for (* 60 60)}
+       :cache-for :forever}
       ]})
 
 
   (def handler
     (fn [{:keys [uri] :as req}]
-      (if (= uri "/pictures/big")
+      (if (str/starts-with? uri "/pictures/big")
         (do
           (Thread/sleep 2000)
           {:status 200 :body "slow"})
@@ -152,6 +160,9 @@
   ;; cacheable slow query (first time slow) 2000 ms
   (time
    (boosted-site {:uri "/pictures/big" :request-method :get}))
+
+  (time
+   (boosted-site {:uri "/pictures/big1" :request-method :get}))
 
   ;; cacheable slow query (NOW REALLY FAST as in CACHE) 0.3 ms
   (time
