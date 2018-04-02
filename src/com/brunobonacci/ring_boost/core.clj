@@ -169,3 +169,112 @@
    (boosted-site {:uri "/pictures/big" :request-method :get}))
 
   )
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;                                                                            ;;
+;;                       ---==| R E F A C T O R |==----                       ;;
+;;                                                                            ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(comment
+  {:req
+   :resp
+   :cached
+   :boost {:profiles, :cache}
+   :handler
+
+   :cacheable-profile
+   :cache-key
+   })
+
+
+(defn lift-request
+  [req boost handler]
+  {:req req :boost boost :handler handler})
+
+
+(defn cacheable-profilie
+  [{:keys [boost req] :as ctx}]
+  (assoc ctx :cacheable-profile
+         (matching-profile (:profiles boost) req)))
+
+(defn cache-lookup
+  [{:keys [boost cacheable-profile req] :as ctx}]
+  (if-not cacheable-profile
+    ctx
+    (let [key* (:key-maker cacheable-profile)
+          key  (key* req)]
+      (assoc ctx
+             :cached (sph/get-value (:cache boost) "cache" key)
+             :cache-key key))))
+
+(defn is-cache-expired?
+  [{:keys [cacheable-profile cached] :as ctx}]
+  (if-not cached
+    ctx
+    (let [cache-for (:cache-for cacheable-profile)
+          elapsed   (- (System/currentTimeMillis)
+                       (or (:timestamp cached) 0))
+          expired?  (> elapsed (* (if (= :forever cache-for)
+                                    Long/MAX_VALUE cache-for) 1000))]
+      (if expired?
+        (dissoc ctx :cached)
+        ctx))))
+
+
+(defn update-cache-stats
+  [{:keys [boost cached] :as ctx}]
+  ctx)
+
+(defn fetch-response
+  [{:keys [req cached handler] :as ctx}]
+  (assoc ctx :resp (if cached (:payload cached) (handler req))))
+
+(defn cache-store!
+  [{:keys [boost cacheable-profile cache-key resp cached] :as ctx}]
+  (when (and cacheable-profile (not cached) resp)
+    (let [data {:timestamp (System/currentTimeMillis) :payload resp}]
+      (sph/set-value! (:cache boost) "cache" cache-key data)))
+  ctx)
+
+(defn return-response
+  [{:keys [resp]}]
+  resp)
+
+(defn debug-headers
+  [{:keys [req cached] :as ctx}]
+  (if (get-in req [:headers "x-cache-debug"])
+    (update ctx :resp
+            (fn [resp]
+              (when resp
+                (update resp :headers conj
+                        {"X-CACHE" "RING-BOOST/v0.1.0" ;;TODO:version
+                         "X-RING-BOOST-CACHE" (if (:cached ctx) "CACHE-HIT" "CACHE-MISS")
+                         "X-RING-BOOST-CACHE-PROFILE" (or (str (-> ctx :cacheable-profile :profile)) "unknown")}))))
+    ctx)
+  )
+
+
+
+(comment
+
+  (def boost (compile-configuration boost-config))
+
+  (-> {:uri "/pictures/big1" :request-method :get
+       :headers {"x-cache-debug" "1"}}
+      (lift-request boost handler)
+      cacheable-profilie
+      cache-lookup
+      is-cache-expired?
+      update-cache-stats
+      fetch-response
+      cache-store!
+      debug-headers
+      return-response)
+
+  (sph/get-value (:cache boost) "cache" ":get|||/pictures/big1|")
+  (sph/set-value! (:cache boost) "cache" ":get|||/pictures/big1|"
+                 {:timestamp (System/currentTimeMillis), :payload {:status 200, :body "slow"}})
+  )
