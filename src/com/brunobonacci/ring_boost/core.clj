@@ -1,9 +1,8 @@
 (ns com.brunobonacci.ring-boost.core
-  (:require [where.core :refer [where]]
+  (:require [clojure.pprint :refer [pprint]]
             [clojure.string :as str]
-            [com.brunobonacci.sophia :as sph]))
-
-
+            [com.brunobonacci.sophia :as sph]
+            [where.core :refer [where]]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                                            ;;
@@ -61,12 +60,147 @@
 
 
 
+(defn compile-processor
+  [{:keys [processor-seq] :as boost-config}]
+  (->> (drop 1 processor-seq)
+       reverse
+       (map :call)
+       (apply comp)))
+
+
+
+(defn debug-compile-processor
+  [{:keys [processor-seq] :as boost-config}]
+  (->> processor-seq
+       (map (fn [{:keys [name call]}]
+              {:name name
+               :call (fn [ctx]
+                       (println "calling: " name)
+                       (call ctx))}))
+       (drop 1)
+       reverse
+       (map :call)
+       (apply comp)))
+
+
+
 (defn compile-configuration
   [boost-config]
   (as-> boost-config $
     (update $ :profiles build-profiles)
     (assoc $ :cache
-           (sph/sophia (:storage boost-config)))))
+           (sph/sophia (:storage $)))
+    (assoc $ :processor (compile-processor $))))
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;                                                                            ;;
+;;             ---==| C O N T E X T   P R O C E S S I N G |==----             ;;
+;;                                                                            ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(comment
+  {:req
+   :resp
+   :cached
+   :boost {:profiles, :cache}
+   :handler
+
+   :cacheable-profile
+   :cache-key
+   })
+
+
+
+(defn lift-request
+  [boost handler]
+  (fn [req]
+    {:boost boost :handler handler :req req}))
+
+
+
+(defn cacheable-profilie
+  [{:keys [boost req] :as ctx}]
+  (assoc ctx :cacheable-profile
+         (matching-profile (:profiles boost) req)))
+
+
+
+(defn cache-lookup
+  [{:keys [boost cacheable-profile req] :as ctx}]
+  (if-not cacheable-profile
+    ctx
+    (let [key* (:key-maker cacheable-profile)
+          key  (key* req)]
+      (assoc ctx
+             :cached (sph/get-value (:cache boost) "cache" key)
+             :cache-key key))))
+
+
+
+(defn is-cache-expired?
+  [{:keys [cacheable-profile cached] :as ctx}]
+  (if-not cached
+    ctx
+    (let [cache-for (:cache-for cacheable-profile)
+          elapsed   (- (System/currentTimeMillis)
+                       (or (:timestamp cached) 0))
+          expired?  (> elapsed (* (if (= :forever cache-for)
+                                    Long/MAX_VALUE cache-for) 1000))]
+      (if expired?
+        (dissoc ctx :cached)
+        ctx))))
+
+
+
+(defn update-cache-stats
+  [{:keys [boost cached] :as ctx}]
+  ctx)
+
+
+
+(defn fetch-response
+  [{:keys [req cached handler] :as ctx}]
+  (assoc ctx :resp (if cached (:payload cached) (handler req))))
+
+
+
+(defn cache-store!
+  [{:keys [boost cacheable-profile cache-key resp cached] :as ctx}]
+  (when (and cacheable-profile (not cached) resp)
+    (let [data {:timestamp (System/currentTimeMillis) :payload resp}]
+      (sph/set-value! (:cache boost) "cache" cache-key data)))
+  ctx)
+
+
+
+(defn return-response
+  [{:keys [resp]}]
+  resp)
+
+
+
+(defn debug-headers
+  [{:keys [req cached] :as ctx}]
+  (if (get-in req [:headers "x-cache-debug"])
+    (update ctx :resp
+            (fn [resp]
+              (when resp
+                (update resp :headers conj
+                        {"X-CACHE" "RING-BOOST/v0.1.0" ;;TODO:version
+                         "X-RING-BOOST-CACHE" (if (:cached ctx) "CACHE-HIT" "CACHE-MISS")
+                         "X-RING-BOOST-CACHE-PROFILE" (or (str (-> ctx :cacheable-profile :profile)) "unknown")}))))
+    ctx))
+
+
+
+(defn debug-print-context
+  [ctx]
+  (pprint ctx)
+  ctx)
 
 
 
@@ -76,37 +210,10 @@
   (if-not enabled
     ;; if boost is not enabled, then just return the handler
     handler
-    (let [conf     (compile-configuration boost-config)
-          profiles (:profiles conf)
-          cache    (:cache conf)]
+    (let [conf      (compile-configuration boost-config)
+          processor (comp (:processor conf) (lift-request conf handler))]
       (fn [req]
-        (let [cacheable-profilie? (matching-profile profiles req)]
-          (if-not cacheable-profilie?
-            (handler req)
-            ;;if cacheable, then let's check in the cache
-            (let [key*      (:key-maker cacheable-profilie?)
-                  key       (key* req)
-                  cached    (sph/get-value cache "cache" key)
-                  cache-for (:cache-for cacheable-profilie?)
-                  elapsed   (- (System/currentTimeMillis)
-                               (or (:timestamp cached) 0))
-                  expired?  (> elapsed (* (if (= :forever cache-for)
-                                           Long/MAX_VALUE cache-for) 1000))]
-              (if (and cached (not expired?))
-                ;; cache hit
-                ;; 1 - update stats
-                (assoc-in (:payload cached)
-                          [:headers "X-RING-BOOST"] "CACHE-HIT" )
-                ;; cache miss
-                (let [{:keys [status] :as resp} (handler req)]
-                  (if (< status 300)
-                    (let [data {:payload resp
-                                :timestamp (System/currentTimeMillis)}]
-                      (sph/set-value! cache "cache" key data)
-                      (assoc-in resp [:headers "X-RING-BOOST"] "CACHE-MISS"))
-                    resp))))))))))
-
-
+        (processor req)))))
 
 
 
@@ -124,7 +231,7 @@
     {:enabled true
      :storage {:sophia.path "/tmp/ring-boost-cache" :dbs ["cache" "stats"]}
      :profiles
-     [{:profile :forever
+     [{:profile :pictures
        :match [:and
                [:uri :starts-with? "/pictures/"]
                [:request-method = :get]]
@@ -137,7 +244,17 @@
                [:method = :get]
                [(comp :user-id :params) not= nil]]
        :cache-for :forever}
-      ]})
+      ]
+     :processor-seq
+     [{:name :lift-request         }
+      {:name :cacheable-profilie   :call cacheable-profilie}
+      {:name :cache-lookup         :call cache-lookup      }
+      {:name :is-cache-expired?    :call is-cache-expired? }
+      {:name :update-cache-stats   :call update-cache-stats}
+      {:name :fetch-response       :call fetch-response    }
+      {:name :cache-store!         :call cache-store!      }
+      {:name :debug-headers        :call debug-headers     }
+      {:name :return-response      :call return-response   }]})
 
 
   (def handler
@@ -159,7 +276,8 @@
 
   ;; cacheable slow query (first time slow) 2000 ms
   (time
-   (boosted-site {:uri "/pictures/big" :request-method :get}))
+   (boosted-site {:uri "/pictures/big" :request-method :get
+                  :headers {"x-cache-debug" "1"}}))
 
   (time
    (boosted-site {:uri "/pictures/big1" :request-method :get}))
@@ -172,99 +290,15 @@
 
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;                                                                            ;;
-;;                       ---==| R E F A C T O R |==----                       ;;
-;;                                                                            ;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (comment
-  {:req
-   :resp
-   :cached
-   :boost {:profiles, :cache}
-   :handler
 
-   :cacheable-profile
-   :cache-key
-   })
-
-
-(defn lift-request
-  [req boost handler]
-  {:req req :boost boost :handler handler})
-
-
-(defn cacheable-profilie
-  [{:keys [boost req] :as ctx}]
-  (assoc ctx :cacheable-profile
-         (matching-profile (:profiles boost) req)))
-
-(defn cache-lookup
-  [{:keys [boost cacheable-profile req] :as ctx}]
-  (if-not cacheable-profile
-    ctx
-    (let [key* (:key-maker cacheable-profile)
-          key  (key* req)]
-      (assoc ctx
-             :cached (sph/get-value (:cache boost) "cache" key)
-             :cache-key key))))
-
-(defn is-cache-expired?
-  [{:keys [cacheable-profile cached] :as ctx}]
-  (if-not cached
-    ctx
-    (let [cache-for (:cache-for cacheable-profile)
-          elapsed   (- (System/currentTimeMillis)
-                       (or (:timestamp cached) 0))
-          expired?  (> elapsed (* (if (= :forever cache-for)
-                                    Long/MAX_VALUE cache-for) 1000))]
-      (if expired?
-        (dissoc ctx :cached)
-        ctx))))
-
-
-(defn update-cache-stats
-  [{:keys [boost cached] :as ctx}]
-  ctx)
-
-(defn fetch-response
-  [{:keys [req cached handler] :as ctx}]
-  (assoc ctx :resp (if cached (:payload cached) (handler req))))
-
-(defn cache-store!
-  [{:keys [boost cacheable-profile cache-key resp cached] :as ctx}]
-  (when (and cacheable-profile (not cached) resp)
-    (let [data {:timestamp (System/currentTimeMillis) :payload resp}]
-      (sph/set-value! (:cache boost) "cache" cache-key data)))
-  ctx)
-
-(defn return-response
-  [{:keys [resp]}]
-  resp)
-
-(defn debug-headers
-  [{:keys [req cached] :as ctx}]
-  (if (get-in req [:headers "x-cache-debug"])
-    (update ctx :resp
-            (fn [resp]
-              (when resp
-                (update resp :headers conj
-                        {"X-CACHE" "RING-BOOST/v0.1.0" ;;TODO:version
-                         "X-RING-BOOST-CACHE" (if (:cached ctx) "CACHE-HIT" "CACHE-MISS")
-                         "X-RING-BOOST-CACHE-PROFILE" (or (str (-> ctx :cacheable-profile :profile)) "unknown")}))))
-    ctx)
-  )
-
-
-
-(comment
 
   (def boost (compile-configuration boost-config))
 
-  (-> {:uri "/pictures/big1" :request-method :get
+  (-> {:uri "/pictures/big" :request-method :get
        :headers {"x-cache-debug" "1"}}
-      (lift-request boost handler)
+      ((lift-request boost handler))
       cacheable-profilie
       cache-lookup
       is-cache-expired?
@@ -274,7 +308,4 @@
       debug-headers
       return-response)
 
-  (sph/get-value (:cache boost) "cache" ":get|||/pictures/big1|")
-  (sph/set-value! (:cache boost) "cache" ":get|||/pictures/big1|"
-                 {:timestamp (System/currentTimeMillis), :payload {:status 200, :body "slow"}})
   )
