@@ -2,7 +2,8 @@
   (:require [clojure.pprint :refer [pprint]]
             [clojure.string :as str]
             [com.brunobonacci.sophia :as sph]
-            [where.core :refer [where]]))
+            [where.core :refer [where]]
+            [clojure.java.io :as io]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                                            ;;
@@ -60,6 +61,13 @@
 
 
 
+(defn load-version
+  [config]
+  (assoc config :boost-version
+         (str/trim (slurp (io/resource "ring-boost.version")))))
+
+
+
 (defn compile-processor
   [{:keys [processor-seq] :as boost-config}]
   (->> (drop 1 processor-seq)
@@ -87,6 +95,7 @@
 (defn compile-configuration
   [boost-config]
   (as-> boost-config $
+    (load-version $)
     (update $ :profiles build-profiles)
     (assoc $ :cache
            (sph/sophia (:storage $)))
@@ -184,13 +193,13 @@
 
 
 (defn debug-headers
-  [{:keys [req cached] :as ctx}]
+  [{:keys [req cached boost] :as ctx}]
   (if (get-in req [:headers "x-cache-debug"])
     (update ctx :resp
             (fn [resp]
               (when resp
                 (update resp :headers conj
-                        {"X-CACHE" "RING-BOOST/v0.1.0" ;;TODO:version
+                        {"X-CACHE" (str "RING-BOOST/v" (:boost-version boost))
                          "X-RING-BOOST-CACHE" (if (:cached ctx) "CACHE-HIT" "CACHE-MISS")
                          "X-RING-BOOST-CACHE-PROFILE" (or (str (-> ctx :cacheable-profile :profile)) "unknown")}))))
     ctx))
