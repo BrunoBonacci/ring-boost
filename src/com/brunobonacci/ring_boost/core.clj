@@ -11,6 +11,24 @@
 ;;                                                                            ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(def ^:const default-keys
+  [:uri :request-method :server-name :server-port :query-string])
+
+
+
+(def ^:const default-processor-seq
+  [{:name :lift-request         }
+   {:name :cacheable-profilie   :call cacheable-profilie}
+   {:name :cache-lookup         :call cache-lookup      }
+   {:name :is-cache-expired?    :call is-cache-expired? }
+   {:name :update-cache-stats   :call update-cache-stats}
+   {:name :fetch-response       :call fetch-response    }
+   {:name :cache-store!         :call cache-store!      }
+   {:name :debug-headers        :call debug-headers     }
+   {:name :return-response      :call return-response   }])
+
+
+
 (defn build-matcher
   [{:keys [match matcher] :as profile}]
   (if matcher
@@ -24,11 +42,6 @@
   (some (fn [{:keys [matcher] :as p}]
           (when (and matcher (matcher request))
             p)) profiles))
-
-
-
-(def default-keys
-  [:request-method :server-name :server-port :uri :query-string])
 
 
 
@@ -101,6 +114,23 @@
            (sph/sophia (:storage $)))
     (assoc $ :processor (compile-processor $))))
 
+
+
+(defn after-call
+  [{:keys [processor-seq] :as  config} call-name new-call]
+  (let [pre  (take-while (where :name not= call-name) processor-seq)
+        it   (filter (where :name = call-name) processor-seq)
+        post (rest (drop-while (where :name not= call-name) processor-seq))]
+    (concat pre it [new-call] post)))
+
+
+
+(defn before-call
+  [{:keys [processor-seq] :as  config} call-name new-call]
+  (let [pre  (take-while (where :name not= call-name) processor-seq)
+        it   (filter (where :name = call-name) processor-seq)
+        post (rest (drop-while (where :name not= call-name) processor-seq))]
+    (concat pre [new-call] it post)))
 
 
 

@@ -1,6 +1,8 @@
-(ns com.brunobonacci.ring-boost)
+(ns com.brunobonacci.ring-boost
+  (:require [com.brunobonacci.ring-boost.core :as rb]))
 
-(defn boost
-  [hander config]
-  (fn [req]
-    (hander req)))
+
+
+(defn ring-boost
+  [handler {:keys [enabled] :as boost-config}]
+  (rb/ring-boost handler boost-config))
