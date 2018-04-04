@@ -16,19 +16,6 @@
 
 
 
-(def ^:const default-processor-seq
-  [{:name :lift-request         }
-   {:name :cacheable-profilie   :call cacheable-profilie}
-   {:name :cache-lookup         :call cache-lookup      }
-   {:name :is-cache-expired?    :call is-cache-expired? }
-   {:name :update-cache-stats   :call update-cache-stats}
-   {:name :fetch-response       :call fetch-response    }
-   {:name :cache-store!         :call cache-store!      }
-   {:name :debug-headers        :call debug-headers     }
-   {:name :return-response      :call return-response   }])
-
-
-
 (defn build-matcher
   [{:keys [match matcher] :as profile}]
   (if matcher
@@ -240,6 +227,19 @@
   [ctx]
   (pprint ctx)
   ctx)
+
+
+
+(def ^:const default-processor-seq
+  [{:name :lift-request         }
+   {:name :cacheable-profilie   :call cacheable-profilie}
+   {:name :cache-lookup         :call cache-lookup      }
+   {:name :is-cache-expired?    :call is-cache-expired? }
+   {:name :update-cache-stats   :call update-cache-stats}
+   {:name :fetch-response       :call fetch-response    }
+   {:name :cache-store!         :call cache-store!      }
+   {:name :debug-headers        :call debug-headers     }
+   {:name :return-response      :call return-response   }])
 
 
 
