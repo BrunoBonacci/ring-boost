@@ -3,7 +3,8 @@
             [clojure.string :as str]
             [com.brunobonacci.sophia :as sph]
             [where.core :refer [where]]
-            [clojure.java.io :as io]))
+            [clojure.java.io :as io]
+            [pandect.algo.md5 :as digest]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                                            ;;
@@ -215,7 +216,7 @@
     (update ctx :resp
             (fn [resp]
               (when resp
-                (update resp :headers conj
+                (update resp :headers (fnil conj {})
                         {"X-CACHE" (str "RING-BOOST/v" (:boost-version boost))
                          "X-RING-BOOST-CACHE" (if (:cached ctx) "CACHE-HIT" "CACHE-MISS")
                          "X-RING-BOOST-CACHE-PROFILE" (or (str (-> ctx :cacheable-profile :profile)) "unknown")}))))
@@ -230,16 +231,54 @@
 
 
 
+(defn response-body-normalize
+  [{:keys [cacheable-profile resp cached] :as ctx}]
+  (if-not (and cacheable-profile (not cached) (:body resp))
+    ctx
+    (cond
+      (string? (:body resp))
+      (update-in ctx [:resp :body]
+                 (fn [^String body] (.getBytes body)))
+
+      :else
+      ctx)))
+
+
+
+(def byte-array-type
+  (type (byte-array 0)))
+
+
+
+(defn byte-array?
+  [v]
+  (= byte-array-type (type v)))
+
+
+
+(defn add-cache-headers
+  [{:keys [resp] :as ctx}]
+  (if (and (byte-array? (get resp :body))
+         (not (or (get-in resp [:headers "etag"])
+                 (get-in resp [:headers "ETag"]))))
+    (assoc-in ctx [:resp :headers "etag"]
+              (digest/md5 (get resp :body)))
+    ctx))
+
+
+
 (def ^:const default-processor-seq
   [{:name :lift-request         }
-   {:name :cacheable-profilie   :call cacheable-profilie}
-   {:name :cache-lookup         :call cache-lookup      }
-   {:name :is-cache-expired?    :call is-cache-expired? }
-   {:name :update-cache-stats   :call update-cache-stats}
-   {:name :fetch-response       :call fetch-response    }
-   {:name :cache-store!         :call cache-store!      }
-   {:name :debug-headers        :call debug-headers     }
-   {:name :return-response      :call return-response   }])
+   {:name :cacheable-profilie      :call cacheable-profilie}
+   {:name :cache-lookup            :call cache-lookup      }
+   {:name :is-cache-expired?       :call is-cache-expired? }
+   {:name :update-cache-stats      :call update-cache-stats}
+   {:name :fetch-response          :call fetch-response    }
+   {:name :response-body-normalize :call response-body-normalize}
+   {:name :add-cache-headers       :call add-cache-headers }
+   {:name :cache-store!            :call cache-store!      }
+   {:name :debug-headers           :call debug-headers     }
+   {:name :return-response         :call return-response   }])
 
 
 
@@ -343,8 +382,12 @@
       is-cache-expired?
       update-cache-stats
       fetch-response
+      response-body-normalize
+      add-cache-headers
       cache-store!
       debug-headers
-      return-response)
+      ((fn [ctx]
+         (dissoc ctx :boost :handler :req)))
+      #_return-response)
 
   )
