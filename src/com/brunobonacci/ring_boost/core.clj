@@ -228,9 +228,20 @@
 
 
 
+(defn response-cacheable?
+  [{:keys [req resp cached handler] :as ctx}]
+  (assoc ctx :resp-cacheable?
+         (and resp (<= 200 (:status resp) 299))))
+
+
+
 (defn cache-store!
-  [{:keys [boost cacheable-profile cache-key resp cached] :as ctx}]
-  (when (and cacheable-profile (not cached) resp)
+  [{:keys [boost cacheable-profile cache-key resp cached resp-cacheable?] :as ctx}]
+  ;; when the user asked to cache this request
+  ;; and this response didn't come from the cache
+  ;; but it was fetched and the response is cacheable
+  ;; then save it into the cache
+  (when (and cacheable-profile (not cached) resp-cacheable?)
     (let [data {:timestamp (System/currentTimeMillis) :payload resp}]
       (sph/set-value! (:cache boost) "cache" cache-key data)))
   ctx)
@@ -305,11 +316,12 @@
    {:name :cacheable-profilie      :call cacheable-profilie}
    {:name :cache-lookup            :call cache-lookup      }
    {:name :is-cache-expired?       :call is-cache-expired? }
-   {:name :update-cache-stats      :call update-cache-stats}
    {:name :fetch-response          :call fetch-response    }
+   {:name :response-cacheable?     :call response-cacheable?}
    {:name :response-body-normalize :call response-body-normalize}
    {:name :add-cache-headers       :call add-cache-headers }
    {:name :cache-store!            :call cache-store!      }
+   {:name :update-cache-stats      :call update-cache-stats}
    {:name :debug-headers           :call debug-headers     }
    {:name :return-response         :call return-response   }])
 
@@ -413,11 +425,12 @@
       cacheable-profilie
       cache-lookup
       is-cache-expired?
-      update-cache-stats
       fetch-response
+      response-cacheable?
       response-body-normalize
       add-cache-headers
       cache-store!
+      update-cache-stats
       debug-headers
       ((fn [ctx]
          (dissoc ctx :boost :handler :req)))
