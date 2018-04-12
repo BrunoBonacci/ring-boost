@@ -13,7 +13,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (def ^:const default-keys
-  [:uri :request-method :server-name :server-port :query-string])
+  [:uri :request-method :server-name :server-port :query-string :body-fingerprint])
 
 
 
@@ -122,6 +122,22 @@
 
 
 
+(defn fetch [body]
+  (when body
+    (cond
+      (instance? java.io.InputStream body)
+      (let [^java.io.ByteArrayOutputStream out (java.io.ByteArrayOutputStream.)]
+        (io/copy body out)
+        (.toByteArray out))
+
+      (string? body)
+      (let [^String sbody body]
+        (.getBytes sbody))
+
+      :else
+      body)))
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                                            ;;
 ;;             ---==| C O N T E X T   P R O C E S S I N G |==----             ;;
@@ -153,6 +169,19 @@
   [{:keys [boost req] :as ctx}]
   (assoc ctx :cacheable-profile
          (matching-profile (:profiles boost) req)))
+
+
+
+(defn request-body-fingerprint
+  [{:keys [boost cacheable-profile req] :as ctx}]
+  (if-not cacheable-profile
+    ctx
+    (let [body        (fetch (:body req))
+          fingerprint (when (byte-array? body) (digest/md5 body))
+          normal-body (if (byte-array? body) (java.io.ByteArrayInputStream. body) body)]
+      (-> ctx
+          (assoc-in [:req :body] normal-body)
+          (assoc-in [:req :body-fingerprint] fingerprint)))))
 
 
 
@@ -217,7 +246,7 @@
                                               (update :hit  hit+)
                                               (update :miss miss+)
                                               (update :not-cacheable cachenot+)))]
-               {:key stats :profile stats})))
+               {:key stats :profile pstats})))
     ctx))
 
 
@@ -325,17 +354,18 @@
 
 (def ^:const default-processor-seq
   [{:name :lift-request         }
-   {:name :cacheable-profilie      :call cacheable-profilie}
-   {:name :cache-lookup            :call cache-lookup      }
-   {:name :is-cache-expired?       :call is-cache-expired? }
-   {:name :fetch-response          :call fetch-response    }
-   {:name :response-cacheable?     :call response-cacheable?}
-   {:name :response-body-normalize :call response-body-normalize}
-   {:name :add-cache-headers       :call add-cache-headers }
-   {:name :cache-store!            :call cache-store!      }
-   {:name :update-cache-stats      :call update-cache-stats}
-   {:name :debug-headers           :call debug-headers     }
-   {:name :return-response         :call return-response   }])
+   {:name :cacheable-profilie       :call cacheable-profilie}
+   {:name :request-body-fingerprint :call request-body-fingerprint}
+   {:name :cache-lookup             :call cache-lookup      }
+   {:name :is-cache-expired?        :call is-cache-expired? }
+   {:name :fetch-response           :call fetch-response    }
+   {:name :response-cacheable?      :call response-cacheable?}
+   {:name :response-body-normalize  :call response-body-normalize}
+   {:name :add-cache-headers        :call add-cache-headers }
+   {:name :cache-store!             :call cache-store!      }
+   {:name :update-cache-stats       :call update-cache-stats}
+   {:name :debug-headers            :call debug-headers     }
+   {:name :return-response          :call return-response   }])
 
 
 
