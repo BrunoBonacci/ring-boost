@@ -65,7 +65,9 @@
 (defn load-version
   [config]
   (assoc config :boost-version
-         (str/trim (slurp (io/resource "ring-boost.version")))))
+         (try
+           (str/trim (slurp (io/resource "ring-boost.version")))
+           (catch Exception _ "n/a"))))
 
 
 
@@ -136,6 +138,17 @@
 
       :else
       body)))
+
+
+
+(def byte-array-type
+  (type (byte-array 0)))
+
+
+
+(defn byte-array?
+  [v]
+  (= byte-array-type (type v)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -279,7 +292,9 @@
 
 (defn return-response
   [{:keys [resp]}]
-  resp)
+  (if (byte-array? (:body resp))
+      (update resp :body #(java.io.ByteArrayInputStream. %))
+      resp))
 
 
 
@@ -330,17 +345,6 @@
 
 
 
-(def byte-array-type
-  (type (byte-array 0)))
-
-
-
-(defn byte-array?
-  [v]
-  (= byte-array-type (type v)))
-
-
-
 (defn add-cache-headers
   [{:keys [resp] :as ctx}]
   (if (and (byte-array? (get resp :body))
@@ -379,94 +383,3 @@
           processor (comp (:processor conf) (lift-request conf handler))]
       (fn [req]
         (processor req)))))
-
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;                                                                            ;;
-;;                        ---==| E X A M P L E |==----                        ;;
-;;                                                                            ;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(comment
-
-
-
-  (def boost-config
-    {:enabled true
-     :storage {:sophia.path "/tmp/ring-boost-cache" :dbs ["cache" "stats"]}
-     :profiles
-     [{:profile :pictures
-       :match [:and
-               [:uri :starts-with? "/pictures/"]
-               [:request-method = :get]]
-       :cache-for 5}
-
-
-      {:profile :private-pages
-       :match [:and
-               [:uri :starts-with? "/profiles/"]
-               [:method = :get]
-               [(comp :user-id :params) not= nil]]
-       :cache-for :forever}
-      ]
-     :processor-seq default-processor-seq})
-
-
-  (def handler
-    (fn [{:keys [uri] :as req}]
-      (if (str/starts-with? uri "/pictures/big")
-        (do
-          (Thread/sleep 2000)
-          {:status 200 :body "slow"})
-        {:status 200 :body "fast"})))
-
-
-  (def boosted-site
-    (-> handler
-        (ring-boost boost-config)))
-
-  ;; non cacheable
-  (time
-   (boosted-site {:uri "/something-else" :request-method :get}))
-
-  ;; cacheable slow query (first time slow) 2000 ms
-  (time
-   (boosted-site {:uri "/pictures/big" :request-method :get
-                  :headers {"x-cache-debug" "1"}}))
-
-  (time
-   (boosted-site {:uri "/pictures/big1" :request-method :get}))
-
-  ;; cacheable slow query (NOW REALLY FAST as in CACHE) 0.3 ms
-  (time
-   (boosted-site {:uri "/pictures/big" :request-method :get}))
-
-  )
-
-
-
-
-(comment
-
-
-  (def boost (compile-configuration boost-config))
-
-  (-> {:uri "/pictures/big" :request-method :get
-       :headers {"x-cache-debug" "1"}}
-      ((lift-request boost handler))
-      cacheable-profilie
-      cache-lookup
-      is-cache-expired?
-      fetch-response
-      response-cacheable?
-      response-body-normalize
-      add-cache-headers
-      cache-store!
-      update-cache-stats
-      debug-headers
-      ((fn [ctx]
-         (dissoc ctx :boost :handler :req)))
-      #_return-response)
-
-  )
