@@ -4,13 +4,17 @@
             [com.brunobonacci.sophia :as sph]
             [where.core :refer [where]]
             [clojure.java.io :as io]
-            [pandect.algo.md5 :as digest]))
+            [pandect.algo.md5 :as digest])
+  (:import [java.io InputStream ByteArrayOutputStream
+            ByteArrayInputStream]))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                                            ;;
 ;;             ---==| B U I L D I N G   F U N C T I O N S |==----             ;;
 ;;                                                                            ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 
 (def ^:const default-keys
   [:uri :request-method :server-name :server-port :query-string :body-fingerprint])
@@ -37,9 +41,9 @@
   [segments]
   (->> segments
        (map (fn [k]
-            (if (vector? k)
-              #(get-in % k)
-              #(get % k))))
+              (if (vector? k)
+                #(get-in % k)
+                #(get % k))))
        (apply juxt)
        (comp (partial str/join "|"))))
 
@@ -58,7 +62,7 @@
   (mapv
    (comp build-key-maker
       build-matcher)
-   profiles))
+   (filter :enabled profiles)))
 
 
 
@@ -67,7 +71,7 @@
   (assoc config :boost-version
          (try
            (str/trim (slurp (io/resource "ring-boost.version")))
-           (catch Exception _ "n/a"))))
+           (catch Exception _ "v???"))))
 
 
 
@@ -217,8 +221,8 @@
     (let [cache-for (:cache-for cacheable-profile)
           elapsed   (- (System/currentTimeMillis)
                        (or (:timestamp cached) 0))
-          expired?  (> elapsed (* (if (= :forever cache-for)
-                                    Long/MAX_VALUE cache-for) 1000))]
+          expired?  (> elapsed (if (= :forever cache-for)
+                                 Long/MAX_VALUE (* 1000 cache-for)))]
       (if expired?
         (dissoc ctx :cached)
         ctx))))
@@ -293,8 +297,8 @@
 (defn return-response
   [{:keys [resp]}]
   (if (byte-array? (:body resp))
-      (update resp :body #(java.io.ByteArrayInputStream. %))
-      resp))
+    (update resp :body #(java.io.ByteArrayInputStream. %))
+    resp))
 
 
 
@@ -320,7 +324,6 @@
                                       (get-in ctx [:stats :profile :miss])
                                       (get-in ctx [:stats :profile :not-cacheable])])})))))
     ctx))
-
 
 
 
@@ -356,6 +359,15 @@
 
 
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;                                                                            ;;
+;;         ----==| D E F A U L T   C O N F I G U R A T I O N |==----          ;;
+;;                                                                            ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
 (def ^:const default-processor-seq
   [{:name :lift-request         }
    {:name :cacheable-profilie       :call cacheable-profilie}
@@ -373,13 +385,71 @@
 
 
 
-(defn ring-boost
-  [handler {:keys [enabled] :as boost-config}]
+(def ^:const default-profile-config
+  {;; whether or not this profile is enabled
+   ;; when disabled it won't be considered at all
+   :enabled true
 
-  (if-not enabled
-    ;; if boost is not enabled, then just return the handler
-    handler
-    (let [conf      (compile-configuration boost-config)
-          processor (comp (:processor conf) (lift-request conf handler))]
-      (fn [req]
-        (processor req)))))
+   ;; profile name is (REQUIRED)
+   ;;:profile :this-profile
+
+   ;; match specification (REQUIRED)
+   ;; :match [:and
+   ;;         [:uri :starts-with? "/something/cacheable/"]
+   ;;         [:request-method = :get]]
+
+   ;; the duration in seconds for how long ring-boost should
+   ;; serve the item from the cache if present
+   ;; use `:forever` to cache immutable responses
+   ;; default 0
+   :cache-for 0})
+
+
+
+(def ^:const default-boost-config
+  {;; Whether the ring-boost cache is enabled or not.
+   ;; when not enabled the handler will behave as if
+   ;; the ring-boost wasn't there at all.
+   :enabled true
+
+   ;; cache storage configuration
+   :storage {:sophia.path "/tmp/ring-boost-cache" :dbs ["cache" "stats"]}
+
+   ;; caching profiles. see `default-profile-config`
+   :profiles []
+
+   ;; sequence of processing function for this boost configuration
+   ;; unless specified differently in a caching profile
+   ;; this one will be used.
+   :processor-seq default-processor-seq})
+
+
+
+(defn deep-merge
+  "Like merge, but merges maps recursively."
+  [& maps]
+  (let [maps (filter (comp not nil?) maps)]
+    (if (every? map? maps)
+      (apply merge-with deep-merge maps)
+      (last maps))))
+
+
+
+(defn- apply-defaults
+  [config]
+  (-> (deep-merge default-boost-config config)
+      (update :profiles (partial mapv (partial deep-merge default-profile-config)))))
+
+
+
+(defn ring-boost
+  [handler boost-config]
+
+  (let [{:keys [enabled] :as conf}
+        (-> boost-config apply-defaults compile-configuration)]
+    (if-not enabled
+      ;; if boost is not enabled, then just return the handler
+      handler
+      (let [processor (comp (:processor conf) (lift-request conf handler))]
+        (fn [req]
+          (processor req))))))

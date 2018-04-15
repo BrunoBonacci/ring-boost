@@ -17,7 +17,7 @@ Then make a request:
 $ curl -is http://localhost:3000/fib/100
 
 HTTP/1.1 200 OK
-Date: Fri, 13 Apr 2018 10:36:46 GMT
+Date: Sat, 14 Apr 2018 10:36:46 GMT
 ETag: 30647e5b994dc46db920c54bfebfe5f0
 Content-Type: application/json; charset=utf-8
 Content-Length: 55
@@ -34,7 +34,7 @@ request header `x-cache-debug: 1`
 $ curl -is -H 'x-cache-debug: 1' http://localhost:3000/fib/100
 
 HTTP/1.1 200 OK
-Date: Fri, 13 Apr 2018 10:39:30 GMT
+Date: Sat, 14 Apr 2018 10:39:30 GMT
 ETag: 30647e5b994dc46db920c54bfebfe5f0
 X-CACHE: RING-BOOST/v0.1.0-SNAPSHOT
 X-RING-BOOST-CACHE: CACHE-HIT
