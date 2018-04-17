@@ -339,6 +339,9 @@
   (if-not (and cacheable-profile (not cached) (:body resp))
     ctx
     (cond
+      (instance? java.io.InputStream (:body resp))
+      (update-in ctx [:resp :body] fetch)
+
       (string? (:body resp))
       (update-in ctx [:resp :body]
                  (fn [^String body] (.getBytes body)))
