@@ -8,7 +8,7 @@ I library to boost performances of Clojure web applications with off-heap server
 In order to use the library add the dependency to your `project.clj`
 
 ``` clojure
-[com.brunobonacci/ring-boost "0.1.0-SNAPSHOT"]
+[com.brunobonacci/ring-boost "0.1.0"]
 ```
 
 Current version: [![Clojars Project](https://img.shields.io/clojars/v/com.brunobonacci/ring-boost.svg)](https://clojars.org/com.brunobonacci/ring-boost)
