@@ -23,6 +23,8 @@
 
   :profiles {:dev {:dependencies [[midje "1.9.2-alpha3"]
                                   [org.clojure/test.check "0.9.0"]
-                                  [criterium "0.4.4"]]
+                                  [criterium "0.4.4"]
+                                  [org.slf4j/slf4j-log4j12 "1.7.25"]]
+                   :resource-paths ["dev-resources"]
                    :plugins      [[lein-midje "3.2.1"]]}}
   )
