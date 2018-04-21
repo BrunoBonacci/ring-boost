@@ -73,3 +73,10 @@
                    (if *db-name* (rand-db $ *db-name*) $)
                    (rb/remove-call $ :return-response))]
      ((rb/ring-boost handler config') request))))
+
+
+
+(defn ->str
+  [^bytes bz]
+  (when bz
+    (String. bz)))

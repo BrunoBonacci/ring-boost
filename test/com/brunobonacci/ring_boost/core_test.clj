@@ -209,3 +209,88 @@
     => {:cacheable-profile nil})
 
    ))
+
+
+
+(fact
+
+ "If the requests is not cacheable it won't be stored"
+
+ (with-test-database
+   (process-request
+    ;; given this boost config
+    {:profiles [{:profile :test1
+                 :match [:and
+                         [:uri = "/sample"]
+                         [:request-method = :get]]
+                 :cache-for 10}]}
+    ;; when it received this request
+    {:request-method :get :uri "/sample"}
+    ;; with this processing handler
+    (fn [r] {:status 500 :body "BAD"})
+    ;; extract from the context the following info
+    [{:cacheable-profile [:profile]} :stored :resp-cacheable?]))
+
+ => {:cacheable-profile {:profile :test1}
+     :resp-cacheable? false :stored false}
+ )
+
+
+
+(fact
+
+ "When a request is made for a item which is already cached,
+  and not expired the cached item should be returned."
+
+ (with-test-database
+
+   ;; initial request - should be stored
+   (process-request
+    ;; given this boost config
+    {:profiles [{:profile :test
+                 :match [:and
+                         [:uri = "/sample"]
+                         [:request-method = :get]]
+                 :cache-for 10}]}
+    ;; when it received this request
+    {:request-method :get :uri "/sample"}
+    ;; with this processing handler
+    (fn [r] {:status 200 :body "first"})
+    ;; extract from the context the following info
+    [:resp-cacheable? {:cacheable-profile [:profile]} :stored])
+
+   => {:resp-cacheable? true, :cacheable-profile {:profile :test} :stored true}
+
+
+   ;; second request - should be returned
+   (->
+    (process-request
+     ;; given this boost config
+     {:profiles [{:profile :test
+                  :match [:and
+                          [:uri = "/sample"]
+                          [:request-method = :get]]
+                  :cache-for 10}]}
+     ;; when it received this request
+     {:request-method :get :uri "/sample"}
+     ;; with this processing handler
+     (fn [r] {:status 200 :body "second"})
+     ;; extract from the context the following info
+     [:resp-cacheable? {:cacheable-profile [:profile]}
+      {:cached [:payload]} :resp])
+    (update-in [:cached :payload :body] ->str)
+    (update-in [:resp :body] ->str))
+
+   => {:resp-cacheable? true,
+       :cacheable-profile {:profile :test},
+       :cached
+       {:payload
+        {:body "first"
+         :headers {"etag" "8b04d5e3775d298e78455efc5ca404d5"}
+         :status 200}}
+
+       :resp
+       {:body "first"
+        :headers {"etag" "8b04d5e3775d298e78455efc5ca404d5"}
+        :status 200}}
+   ))
