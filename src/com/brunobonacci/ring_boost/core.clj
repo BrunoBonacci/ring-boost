@@ -109,10 +109,14 @@
     (assoc $ :processor (compile-processor $))))
 
 
+;; defined later
+(declare default-processor-seq)
+
 
 (defn after-call
   [{:keys [processor-seq] :as  config} call-name new-call]
-  (let [pre  (take-while (where :name not= call-name) processor-seq)
+  (let [processor-seq (or processor-seq (default-processor-seq))
+        pre  (take-while (where :name not= call-name) processor-seq)
         it   (filter (where :name = call-name) processor-seq)
         post (rest (drop-while (where :name not= call-name) processor-seq))]
     (concat pre it [new-call] post)))
@@ -121,10 +125,20 @@
 
 (defn before-call
   [{:keys [processor-seq] :as  config} call-name new-call]
-  (let [pre  (take-while (where :name not= call-name) processor-seq)
+  (let [processor-seq (or processor-seq (default-processor-seq))
+        pre  (take-while (where :name not= call-name) processor-seq)
         it   (filter (where :name = call-name) processor-seq)
         post (rest (drop-while (where :name not= call-name) processor-seq))]
     (concat pre [new-call] it post)))
+
+
+
+(defn remove-call
+  [{:keys [processor-seq] :as  config} call-name]
+  (update config :processor-seq
+          #(remove
+            (where :name = call-name)
+            (or % (default-processor-seq)))))
 
 
 
@@ -287,10 +301,11 @@
   ;; and this response didn't come from the cache
   ;; but it was fetched and the response is cacheable
   ;; then save it into the cache
-  (when (and cacheable-profile (not cached) resp-cacheable?)
-    (let [data {:timestamp (System/currentTimeMillis) :payload resp}]
-      (sph/set-value! (:cache boost) "cache" cache-key data)))
-  ctx)
+  (let [store? (and cacheable-profile (not cached) resp-cacheable?)]
+    (when store?
+      (let [data {:timestamp (System/currentTimeMillis) :payload resp}]
+        (sph/set-value! (:cache boost) "cache" cache-key data)))
+    (assoc ctx :stored store?)))
 
 
 
@@ -371,7 +386,7 @@
 
 
 
-(def ^:const default-processor-seq
+(defn default-processor-seq []
   [{:name :lift-request         }
    {:name :cacheable-profilie       :call cacheable-profilie}
    {:name :request-body-fingerprint :call request-body-fingerprint}
@@ -424,7 +439,7 @@
    ;; sequence of processing function for this boost configuration
    ;; unless specified differently in a caching profile
    ;; this one will be used.
-   :processor-seq default-processor-seq})
+   :processor-seq (default-processor-seq)})
 
 
 
