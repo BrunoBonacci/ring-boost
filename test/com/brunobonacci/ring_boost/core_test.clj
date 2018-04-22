@@ -294,3 +294,59 @@
         :headers {"etag" "8b04d5e3775d298e78455efc5ca404d5"}
         :status 200}}
    ))
+
+
+
+(fact
+
+ "When a request is made for a item which is already cached,
+  but expired the handler should be called."
+
+ (with-test-database
+
+   ;; initial request - should be stored
+   (process-request
+    ;; given this boost config
+    {:profiles [{:profile :test
+                 :match [:and
+                         [:uri = "/sample"]
+                         [:request-method = :get]]
+                 :cache-for 1}]}
+    ;; when it received this request
+    {:request-method :get :uri "/sample"}
+    ;; with this processing handler
+    (fn [r] {:status 200 :body "first"})
+    ;; extract from the context the following info
+    [:resp-cacheable? {:cacheable-profile [:profile]} :stored])
+
+   => {:resp-cacheable? true, :cacheable-profile {:profile :test} :stored true}
+
+   ;; expire the cache
+   (Thread/sleep 1100)
+
+   ;; second request - handler should be called
+   (->
+    (process-request
+     ;; given this boost config
+     {:profiles [{:profile :test
+                  :match [:and
+                          [:uri = "/sample"]
+                          [:request-method = :get]]
+                  :cache-for 1}]}
+     ;; when it received this request
+     {:request-method :get :uri "/sample"}
+     ;; with this processing handler
+     (fn [r] {:status 200 :body "second"})
+     ;; extract from the context the following info
+     [:resp-cacheable? {:cacheable-profile [:profile]}
+      :cached :resp])
+    (update-in [:resp :body] ->str))
+
+   => {:resp-cacheable? true,
+       :cacheable-profile {:profile :test},
+
+       :resp
+       {:status 200,
+        :body "second",
+        :headers {"etag" "a9f0e61a137d86aa9db53465e0801612"}}}
+   ))
