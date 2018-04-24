@@ -131,7 +131,11 @@ Here is a description of the configurable options:
    }
 ```
 
-For a full example see: [service example](./examples/fib/README.md)
+For a full example see: [Fibonacci as service example](./examples/fib/README.md)
+
+## Testimonials
+
+See what the users think of [ring-boost](./doc/testimonials.md)
 
 ## License
 
