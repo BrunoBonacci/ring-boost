@@ -113,6 +113,7 @@
 (declare default-processor-seq)
 
 
+
 (defn after-call
   [{:keys [processor-seq] :as  config} call-name new-call]
   (let [processor-seq (or processor-seq (default-processor-seq))
@@ -246,38 +247,44 @@
 (defn update-cache-stats
   [{:keys [boost cacheable-profile cache-key resp cached resp-cacheable?] :as ctx}]
   (if cacheable-profile
-    (assoc ctx :stats
-           (sph/with-transaction [tx (sph/begin-transaction (:cache boost))]
-             (let [hit+      (if cached inc identity)
-                   miss+     (if cached identity inc)
-                   cachenot+ (if (and (not cached) (not resp-cacheable?)) inc identity)
-                   profile (:profile cacheable-profile)
-                   stats   (sph/get-value (:cache boost) "stats"
-                                          (str profile ":" cache-key)
-                                          {:profile profile
-                                           :key cache-key
-                                           :hit  0
-                                           :miss 0
-                                           :not-cacheable 0})
-                   pstats  (sph/get-value (:cache boost) "stats"
-                                          (str profile)
-                                          {:profile profile
-                                           :hit  0
-                                           :miss 0
-                                           :not-cacheable 0})
-                   stats (sph/set-value! (:cache boost) "stats"
-                                         (str profile ":" cache-key)
-                                         (-> stats
-                                             (update :hit  hit+)
-                                             (update :miss miss+)
-                                             (update :not-cacheable cachenot+)))
-                   pstats (sph/set-value! (:cache boost) "stats"
-                                          (str profile)
-                                          (-> pstats
-                                              (update :hit  hit+)
-                                              (update :miss miss+)
-                                              (update :not-cacheable cachenot+)))]
-               {:key stats :profile pstats})))
+    (try
+      (assoc ctx :stats
+             (sph/with-transaction [tx (sph/begin-transaction (:cache boost))]
+               (let [hit+      (if cached inc identity)
+                     miss+     (if cached identity inc)
+                     cachenot+ (if (and (not cached) (not resp-cacheable?)) inc identity)
+                     profile (:profile cacheable-profile)
+                     stats   (sph/get-value (:cache boost) "stats"
+                                            (str profile ":" cache-key)
+                                            {:profile profile
+                                             :key cache-key
+                                             :hit  0
+                                             :miss 0
+                                             :not-cacheable 0})
+                     pstats  (sph/get-value (:cache boost) "stats"
+                                            (str profile)
+                                            {:profile profile
+                                             :hit  0
+                                             :miss 0
+                                             :not-cacheable 0})
+                     stats (sph/set-value! (:cache boost) "stats"
+                                           (str profile ":" cache-key)
+                                           (-> stats
+                                               (update :hit  hit+)
+                                               (update :miss miss+)
+                                               (update :not-cacheable cachenot+)))
+                     pstats (sph/set-value! (:cache boost) "stats"
+                                            (str profile)
+                                            (-> pstats
+                                                (update :hit  hit+)
+                                                (update :miss miss+)
+                                                (update :not-cacheable cachenot+)))]
+                 {:key stats :profile pstats})))
+      ;; if transaction fail, ignore stats update
+      ;; faster times are more important than accurate
+      ;; stats. Maybe consider to update stats async.
+      (catch Exception _
+        ctx))
     ctx))
 
 
