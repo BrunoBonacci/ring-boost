@@ -8,7 +8,7 @@ I library to boost performances of Clojure web applications with off-heap server
 In order to use the library add the dependency to your `project.clj`
 
 ``` clojure
-[com.brunobonacci/ring-boost "0.1.1"]
+[com.brunobonacci/ring-boost "0.1.2"]
 ```
 
 Current version: [![Clojars Project](https://img.shields.io/clojars/v/com.brunobonacci/ring-boost.svg)](https://clojars.org/com.brunobonacci/ring-boost)
@@ -159,7 +159,7 @@ $ curl -is -H 'x-cache-debug: 1' http://localhost:3000/
 
 HTTP/1.1 200 OK
 ETag: 30647e5b994dc46db920c54bfebfe5f0
-X-CACHE: RING-BOOST/v0.1.1
+X-CACHE: RING-BOOST/v0.1.2
 X-RING-BOOST-CACHE: CACHE-HIT
 X-RING-BOOST-CACHE-PROFILE: :cache-profile-name
 X-RING-BOOST-CACHE-STATS1: 11/3/0
@@ -168,7 +168,7 @@ X-RING-BOOST-CACHE-STATS2: 45/20/5
 
 Where:
 
-  - `X-CACHE`: returns the cache name and version. eg `RING-BOOST/v0.1.1`
+  - `X-CACHE`: returns the cache name and version. eg `RING-BOOST/v0.1.2`
   - `X-RING-BOOST-CACHE`: whether is a `CACHE-HIT` or a `CACHE-MISS`
   - `X-RING-BOOST-CACHE-PROFILE`: the name of the cache profile
     defined in the config which was used for this request.
