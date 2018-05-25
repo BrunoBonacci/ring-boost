@@ -244,6 +244,14 @@
 
 
 
+(defn is-skip-cache?
+  [{:keys [req cached] :as ctx}]
+  (if (and cached (get-in req [:headers "x-cache-skip"] false))
+    (dissoc ctx :cached)
+    ctx))
+
+
+
 (defn update-cache-stats
   [{:keys [boost cacheable-profile cache-key resp cached resp-cacheable?] :as ctx}]
   (if cacheable-profile
@@ -399,6 +407,7 @@
    {:name :request-body-fingerprint :call request-body-fingerprint}
    {:name :cache-lookup             :call cache-lookup      }
    {:name :is-cache-expired?        :call is-cache-expired? }
+   {:name :is-skip-cache?           :call is-skip-cache?    }
    {:name :fetch-response           :call fetch-response    }
    {:name :response-cacheable?      :call response-cacheable?}
    {:name :response-body-normalize  :call response-body-normalize}

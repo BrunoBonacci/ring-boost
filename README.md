@@ -133,6 +133,61 @@ Here is a description of the configurable options:
 
 For a full example see: [Fibonacci as service example](./examples/fib/README.md)
 
+## Special request headers
+
+`ring-boost` supports a number of request headers to handle specific
+situations or improve debugging the cache behaviour. Here there is a
+list with a small description.
+
+| Header        | Value                 | Description                                     |
+|---------------|-----------------------|-------------------------------------------------|
+| X-CACHE-DEBUG | (present/not-present) | When this header is present the response will   |
+|               |                       | contains additional headers with the cache      |
+|               |                       | profile and caching statistics.                 |
+| X-CACHE-SKIP  | (present/not-present) | When this header is present the response will   |
+|               |                       | be returned from the processing handler and not |
+|               |                       | from the cache.                                 |
+
+
+### Header `X-CACHE-DEBUG`
+
+If you want to see `ring-boost` debugging headers add the following
+request header `x-cache-debug: 1`
+
+``` bash
+$ curl -is -H 'x-cache-debug: 1' http://localhost:3000/
+
+HTTP/1.1 200 OK
+ETag: 30647e5b994dc46db920c54bfebfe5f0
+X-CACHE: RING-BOOST/v0.1.1
+X-RING-BOOST-CACHE: CACHE-HIT
+X-RING-BOOST-CACHE-PROFILE: :cache-profile-name
+X-RING-BOOST-CACHE-STATS1: 11/3/0
+X-RING-BOOST-CACHE-STATS2: 45/20/5
+```
+
+Where:
+
+  - `X-CACHE`: returns the cache name and version. eg `RING-BOOST/v0.1.1`
+  - `X-RING-BOOST-CACHE`: whether is a `CACHE-HIT` or a `CACHE-MISS`
+  - `X-RING-BOOST-CACHE-PROFILE`: the name of the cache profile
+    defined in the config which was used for this request.
+  - `X-RING-BOOST-CACHE-STATS1`: The cache statistic for the cache **key**
+    (typically URL and more, see `:keys` and `:key-maker`) in the
+    following format `hit/miss/not-cacheable`.
+  - `X-RING-BOOST-CACHE-STATS2`: The cache statistic for the cache
+    **profile** (All URLs matching this profile) in the following
+    format `hit/miss/not-cacheable`.
+
+
+### Header `X-CACHE-SKIP`
+
+If you want to ensure that the handler is called for a particular
+request and that the cache value isn't returned if present then adding
+the following request header `x-cache-skip: 1`. Note that once a
+fresher value is returned from the handler it will be stored in the
+cache.
+
 ## Testimonials
 
 See what the users think of [ring-boost](./doc/testimonials.md)
