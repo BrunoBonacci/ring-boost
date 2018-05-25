@@ -139,14 +139,14 @@ For a full example see: [Fibonacci as service example](./examples/fib/README.md)
 situations or improve debugging the cache behaviour. Here there is a
 list with a small description.
 
-| Header        | Value                 | Description                                     |
-|---------------|-----------------------|-------------------------------------------------|
-| X-CACHE-DEBUG | (present/not-present) | When this header is present the response will   |
-|               |                       | contains additional headers with the cache      |
-|               |                       | profile and caching statistics.                 |
-| X-CACHE-SKIP  | (present/not-present) | When this header is present the response will   |
-|               |                       | be returned from the processing handler and not |
-|               |                       | from the cache.                                 |
+| Header          | Value                 | Description                                     |
+|-----------------|-----------------------|-------------------------------------------------|
+| `X-CACHE-DEBUG` | (present/not-present) | When this header is present the response will   |
+|                 |                       | contains additional headers with the cache      |
+|                 |                       | profile and caching statistics.                 |
+| `X-CACHE-SKIP`  | (present/not-present) | When this header is present the response will   |
+|                 |                       | be returned from the processing handler and not |
+|                 |                       | from the cache.                                 |
 
 
 ### Header `X-CACHE-DEBUG`
