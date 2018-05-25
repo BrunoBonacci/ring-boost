@@ -120,6 +120,7 @@ Here is a description of the configurable options:
     {:name :request-body-fingerprint :call request-body-fingerprint}
     {:name :cache-lookup             :call cache-lookup      }
     {:name :is-cache-expired?        :call is-cache-expired? }
+    {:name :is-skip-cache?           :call is-skip-cache?    }
     {:name :fetch-response           :call fetch-response    }
     {:name :response-cacheable?      :call response-cacheable?}
     {:name :response-body-normalize  :call response-body-normalize}
