@@ -33,6 +33,149 @@
 
 
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;                                                                            ;;
+;;                 ----==| P R O C E S S O R - S E Q |==----                  ;;
+;;                                                                            ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(def test-proc-seq
+  {:processor-seq
+   [{:name :alpha :call identity}
+    {:name :beta  :call identity}
+    {:name :gamma :call identity}
+    {:name :delta :call identity}]})
+
+
+
+(facts
+ "about after-call"
+
+ (fact
+  "after-call: places the new call after the given call when found"
+
+  (as-> test-proc-seq $
+    (after-call $ :beta {:name :lambda :call identity})
+    (:processor-seq $)
+    (map :name $)) => [:alpha :beta :lambda :gamma :delta]
+
+  (as-> test-proc-seq $
+    (after-call $ :delta {:name :lambda :call identity})
+    (:processor-seq $)
+    (map :name $)) => [:alpha :beta :gamma :delta :lambda]
+
+  )
+
+ (fact
+  "after-call: when call is not found and error is raised"
+
+  (as-> test-proc-seq $
+    (after-call $ :theta {:name :lambda :call identity}))
+  => (throws #"call not found")
+  )
+ )
+
+
+
+(facts
+ "about before-call"
+
+ (fact
+  "before-call: places the new call before the given call when found"
+
+  (as-> test-proc-seq $
+    (before-call $ :beta {:name :lambda :call identity})
+    (:processor-seq $)
+    (map :name $)) => [:alpha :lambda :beta :gamma :delta]
+
+  (as-> test-proc-seq $
+    (before-call $ :alpha {:name :lambda :call identity})
+    (:processor-seq $)
+    (map :name $)) => [:lambda :alpha :beta :gamma :delta]
+
+  )
+
+ (fact
+  "before-call: when call is not found and error is raised"
+
+  (as-> test-proc-seq $
+    (before-call $ :theta {:name :lambda :call identity}))
+  => (throws #"call not found")
+  )
+ )
+
+
+
+(facts
+ "about remove-call"
+
+ (fact
+  "remove-call: removes the given call when found"
+
+  (as-> test-proc-seq $
+    (remove-call $ :beta)
+    (:processor-seq $)
+    (map :name $)) => [:alpha :gamma :delta]
+
+  (as-> test-proc-seq $
+    (remove-call $ :alpha)
+    (:processor-seq $)
+    (map :name $)) => [:beta :gamma :delta]
+
+  (as-> test-proc-seq $
+    (remove-call $ :delta)
+    (:processor-seq $)
+    (map :name $)) => [:alpha :beta :gamma]
+
+  )
+
+ (fact
+  "remove-call: when call is not found is a no-op"
+
+  (as-> test-proc-seq $
+    (remove-call $ :theta)
+    (:processor-seq $)
+    (map :name $)) => [:alpha :beta :gamma :delta]
+  )
+ )
+
+
+
+(facts
+ "about replace-call"
+
+ (fact
+  "replace-call: places the new call replace the given call when found"
+
+  (as-> test-proc-seq $
+    (replace-call $ :beta {:name :lambda :call identity})
+    (:processor-seq $)
+    (map :name $)) => [:alpha :lambda :gamma :delta]
+
+  (as-> test-proc-seq $
+    (replace-call $ :alpha {:name :lambda :call identity})
+    (:processor-seq $)
+    (map :name $)) => [:lambda :beta :gamma :delta]
+
+  (as-> test-proc-seq $
+    (replace-call $ :delta {:name :lambda :call identity})
+    (:processor-seq $)
+    (map :name $)) => [:alpha :beta :gamma :lambda]
+
+  )
+
+ (fact
+  "replace-call: when call is not found and error is raised"
+
+  (as-> test-proc-seq $
+    (replace-call $ :theta {:name :lambda :call identity}))
+  => (throws #"call not found")
+  )
+ )
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                                            ;;
 ;;                           ---==| C O R E |==----                           ;;

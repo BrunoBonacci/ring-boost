@@ -120,7 +120,12 @@
         pre  (take-while (where :name not= call-name) processor-seq)
         it   (filter (where :name = call-name) processor-seq)
         post (rest (drop-while (where :name not= call-name) processor-seq))]
-    (concat pre it [new-call] post)))
+    (when-not (seq it)
+      (throw (ex-info (str call-name " call not found.")
+                      {:processor-seq (or processor-seq (default-processor-seq))
+                       :call-name call-name})))
+    (assoc config :processor-seq
+           (concat pre it [new-call] post))))
 
 
 
@@ -130,7 +135,12 @@
         pre  (take-while (where :name not= call-name) processor-seq)
         it   (filter (where :name = call-name) processor-seq)
         post (rest (drop-while (where :name not= call-name) processor-seq))]
-    (concat pre [new-call] it post)))
+    (when-not (seq it)
+      (throw (ex-info (str call-name " call not found.")
+                      {:processor-seq (or processor-seq (default-processor-seq))
+                       :call-name call-name})))
+    (assoc config :processor-seq
+           (concat pre [new-call] it post))))
 
 
 
@@ -140,6 +150,21 @@
           #(remove
             (where :name = call-name)
             (or % (default-processor-seq)))))
+
+
+
+(defn replace-call
+  [{:keys [processor-seq] :as  config} call-name  new-call]
+  (let [processor-seq (or processor-seq (default-processor-seq))
+        pre  (take-while (where :name not= call-name) processor-seq)
+        it   (filter (where :name = call-name) processor-seq)
+        post (rest (drop-while (where :name not= call-name) processor-seq))]
+    (when-not (seq it)
+      (throw (ex-info (str call-name " call not found.")
+                      {:processor-seq (or processor-seq (default-processor-seq))
+                       :call-name call-name})))
+    (assoc config :processor-seq
+           (concat pre [new-call] post))))
 
 
 
