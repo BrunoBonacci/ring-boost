@@ -203,15 +203,54 @@
 
 
 (comment
-  {:req
-   :resp
-   :cached
-   :boost {:profiles, :cache}
-   :handler
+  ;;
+  ;; This is how the context map looks like
+  ;;
+  {;; contains the compiled boost configuration and the reference to the database
+   :boost {;; whether of not the cache is enabled
+           :enabled true/false
+           ;; storage layer configuration
+           :storage {}
+           ;; profile configuration
+           :profiles []
+           ;; list of context processing function
+           :processor-seq []
+           ;; current ring-boost version
+           :boost-version "x.y.z"
+           ;; database reference
+           :cache {}
+           ;; compiled processor (from :processor-seq)
+           :processor fn
+           }
 
-   :cacheable-profile
-   :cache-key
-   })
+   ;; the handler to execute in case of a cache miss
+   :handler handler-fn
+
+   ;; the user request
+   :req {:request-method :get, :uri "/sample", :body nil}
+
+   ;; the matched boost profile if found, nil otherwise
+   :cacheable-profile {:enabled true, :cache-for 10, :profile :test,
+                       :match predicate-fn, :matcher fn, :key-maker fn}
+
+   ;; this is the computed key which identifies this request in the cache
+   :cache-key "/sample|:get||||"
+
+   ;; the response returned by the handler in case of a cache miss
+   ;; or a cached response in cache of cache hit.
+   :resp {:status 200 :body [bytes] :headers {"etag" "foo"}}
+
+   ;; whether or not to store the response into the cache
+   :resp-cacheable? true/false
+
+   ;; whether or not the response was stored
+   :stored true/false
+
+   ;; computed statistics cache hits/misses for the given cache-key
+   ;; and the profile as a whole.
+   :stats {:key {} :profile {}}
+   }
+  )
 
 
 
