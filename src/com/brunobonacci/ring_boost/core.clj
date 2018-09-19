@@ -4,7 +4,8 @@
             [com.brunobonacci.sophia :as sph]
             [where.core :refer [where]]
             [clojure.java.io :as io]
-            [pandect.algo.md5 :as digest])
+            [pandect.algo.md5 :as digest]
+            [clojure.tools.logging :as log])
   (:import [java.io InputStream ByteArrayOutputStream
             ByteArrayInputStream]))
 
@@ -316,42 +317,75 @@
 
 
 
+(defn- increment-stats-by!
+  "increments the stats for a given profile/key by the given amount"
+  [boost {:keys [profile key hit miss not-cacheable]}]
+  (try
+    (sph/transact! (:cache boost)
+      (fn [tx]
+        (sph/upsert-value! tx "stats" (str profile ":" key)
+                           (fnil (partial merge-with +) {:profile profile
+                                                   :key key
+                                                   :hit  0
+                                                   :miss 0
+                                                   :not-cacheable 0})
+                           {:hit hit :miss miss :not-cacheable not-cacheable})
+
+        (sph/upsert-value! tx "stats" (str profile)
+                           (fnil (partial merge-with +) {:profile profile
+                                                   :hit  0
+                                                   :miss 0
+                                                   :not-cacheable 0})
+                           {:hit hit :miss miss :not-cacheable not-cacheable})))
+    (catch Exception x
+      (log/warn x "ring-boost couldn't update statistics."))))
+
+
+
+(defn- async-do!
+  "It runs the given function presumably with side effect
+   without affecting the state of the agent."
+  [f]
+  (fn [state & args]
+    (apply f args)
+    state))
+
+
+
 (defn update-cache-stats
   [{:keys [boost cacheable-profile cache-key resp cached resp-cacheable?] :as ctx}]
-  (if cacheable-profile
+  (when cacheable-profile
+    ;; asynchronously update the stats
+    (send-off (:async-agent boost)
+              (async-do! increment-stats-by!) boost
+              {:profile (:profile cacheable-profile)
+               :key cache-key
+               :hit  (if cached 1 0)
+               :miss (if cached 0 1)
+               :not-cacheable (if (and (not cached) (not resp-cacheable?)) 1 0)}))
+  ctx)
+
+
+
+(defn fetch-cache-stats
+  [{:keys [boost cacheable-profile cache-key req cached resp-cacheable?] :as ctx}]
+  (if (and cacheable-profile (get-in req [:headers "x-cache-debug"]))
     (try
-      (assoc ctx :stats
-             (sph/with-transaction [tx (sph/begin-transaction (:cache boost))]
-               (let [hit+      (if cached inc identity)
-                     miss+     (if cached identity inc)
-                     cachenot+ (if (and (not cached) (not resp-cacheable?)) inc identity)
-                     profile (:profile cacheable-profile)
-                     stats   (sph/get-value (:cache boost) "stats"
-                                            (str profile ":" cache-key)
-                                            {:profile profile
-                                             :key cache-key
-                                             :hit  0
-                                             :miss 0
-                                             :not-cacheable 0})
-                     pstats  (sph/get-value (:cache boost) "stats"
-                                            (str profile)
-                                            {:profile profile
-                                             :hit  0
-                                             :miss 0
-                                             :not-cacheable 0})
-                     stats (sph/set-value! (:cache boost) "stats"
-                                           (str profile ":" cache-key)
-                                           (-> stats
-                                               (update :hit  hit+)
-                                               (update :miss miss+)
-                                               (update :not-cacheable cachenot+)))
-                     pstats (sph/set-value! (:cache boost) "stats"
-                                            (str profile)
-                                            (-> pstats
-                                                (update :hit  hit+)
-                                                (update :miss miss+)
-                                                (update :not-cacheable cachenot+)))]
-                 {:key stats :profile pstats})))
+      (let [profile (:profile cacheable-profile)
+            stats   (sph/get-value (:cache boost) "stats"
+                                   (str profile ":" cache-key)
+                                   {:profile profile
+                                    :key cache-key
+                                    :hit  0
+                                    :miss 0
+                                    :not-cacheable 0})
+            pstats  (sph/get-value (:cache boost) "stats"
+                                   (str profile)
+                                   {:profile profile
+                                    :hit  0
+                                    :miss 0
+                                    :not-cacheable 0})]
+        (assoc ctx :stats {:key stats :profile pstats}))
       ;; if transaction fail, ignore stats update
       ;; faster times are more important than accurate
       ;; stats. Maybe consider to update stats async.
@@ -478,6 +512,7 @@
    {:name :add-cache-headers        :call add-cache-headers }
    {:name :cache-store!             :call cache-store!      }
    {:name :update-cache-stats       :call update-cache-stats}
+   {:name :fetch-cache-stats        :call fetch-cache-stats }
    {:name :debug-headers            :call debug-headers     }
    {:name :return-response          :call return-response   }])
 
@@ -504,7 +539,7 @@
 
 
 
-(def ^:const default-boost-config
+(def default-boost-config
   {;; Whether the ring-boost cache is enabled or not.
    ;; when not enabled the handler will behave as if
    ;; the ring-boost wasn't there at all.
@@ -519,7 +554,12 @@
    ;; sequence of processing function for this boost configuration
    ;; unless specified differently in a caching profile
    ;; this one will be used.
-   :processor-seq (default-processor-seq)})
+   :processor-seq (default-processor-seq)
+
+   ;; agent for async operations
+   ;; like updating the stats
+   :async-agent (agent {})
+   })
 
 
 

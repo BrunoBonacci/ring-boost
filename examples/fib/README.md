@@ -55,6 +55,16 @@ Now try with a larger number like:
 
 Running again, now it will be fetched from the cache.
 
+Here is the latency profile for the `fibonacci` service with and without `ring-boost`
+
+![comparison](./boost.png)
+
+Computed via: `wrk -t2 -c100 -d180s -R500 -L http://127.0.0.1:3000/fib/10000`
+
+As you can see the difference of a slow service with and without `ring-boost` it
+is huge. The slower is the service and the more intensive is the computation
+the bigger is the advantage of using `ring-boost`.
+
 ## License
 
 Copyright © 2018 Bruno Bonacci - Distributed under the Apache License v 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
