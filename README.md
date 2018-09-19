@@ -15,7 +15,7 @@ can be completely customized to tailor your needs.
 In order to use the library add the dependency to your `project.clj`
 
 ``` clojure
-[com.brunobonacci/ring-boost "0.1.3"]
+[com.brunobonacci/ring-boost "0.1.4"]
 ```
 
 Current version: [![Clojars Project](https://img.shields.io/clojars/v/com.brunobonacci/ring-boost.svg)](https://clojars.org/com.brunobonacci/ring-boost)
@@ -134,6 +134,7 @@ Here is a description of the configurable options:
     {:name :add-cache-headers        :call add-cache-headers }
     {:name :cache-store!             :call cache-store!      }
     {:name :update-cache-stats       :call update-cache-stats}
+    {:name :fetch-cache-stats        :call fetch-cache-stats }
     {:name :debug-headers            :call debug-headers     }
     {:name :return-response          :call return-response   }]
    }
@@ -186,6 +187,10 @@ Where:
   - `X-RING-BOOST-CACHE-STATS2`: The cache statistic for the cache
     **profile** (All URLs matching this profile) in the following
     format `hit/miss/not-cacheable`.
+
+**NOTE:** *Please note that stats are updated asynchronously, therefore
+the values returned are eventually consistent. Furthermore some stats
+updates might be lost in event of a JVM crash.*
 
 
 ### Header `X-CACHE-SKIP`
