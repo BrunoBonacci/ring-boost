@@ -15,7 +15,7 @@ can be completely customized to tailor your needs.
 In order to use the library add the dependency to your `project.clj`
 
 ``` clojure
-[com.brunobonacci/ring-boost "0.1.4"]
+[com.brunobonacci/ring-boost "0.1.5"]
 ```
 
 Current version: [![Clojars Project](https://img.shields.io/clojars/v/com.brunobonacci/ring-boost.svg)](https://clojars.org/com.brunobonacci/ring-boost)
@@ -122,7 +122,7 @@ Here is a description of the configurable options:
    ;; unless specified differently in a caching profile
    ;; this one will be used.
    :processor-seq
-   [{:name :lift-request            }
+   [{:name :lift-request         }
     {:name :cacheable-profilie       :call cacheable-profilie}
     {:name :request-body-fingerprint :call request-body-fingerprint}
     {:name :cache-lookup             :call cache-lookup      }
@@ -133,6 +133,7 @@ Here is a description of the configurable options:
     {:name :response-body-normalize  :call response-body-normalize}
     {:name :add-cache-headers        :call add-cache-headers }
     {:name :cache-store!             :call cache-store!      }
+    {:name :track-cache-metrics      :call track-cache-metrics}
     {:name :update-cache-stats       :call update-cache-stats}
     {:name :fetch-cache-stats        :call fetch-cache-stats }
     {:name :debug-headers            :call debug-headers     }
@@ -200,6 +201,27 @@ request and that the cache value isn't returned if present then adding
 the following request header `x-cache-skip: 1`. Note that once a
 fresher value is returned from the handler it will be stored in the
 cache.
+
+## Metrics
+
+The following metrics are tracked via [TrackIt](https://github.com/samsara/trackit)
+
+```
+ring_boost.profile.<profile>.hit_rate
+ring_boost.profile.<profile>.miss_rate
+ring_boost.profile.<profile>.not_cacheable
+ring_boost.cache.lookup
+ring_boost.cache.store
+ring_boost.stats.update
+```
+
+Additionally all clj-sophia engine metrics can be inspected and tracked as
+well.  All metrics can be pushed to a number of different systems such
+as: Console, Ganglia, Graphite, Statsd, Infuxdb, Reimann and NewRelic.
+
+To enable reporting of these metrics please see [TrackIt
+documentation](https://github.com/samsara/trackit#start-reporting).
+
 
 ## Testimonials
 

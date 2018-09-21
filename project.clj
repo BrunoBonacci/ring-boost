@@ -13,6 +13,8 @@
   :scm {:name "git" :url "https://github.com/BrunoBonacci/ring-boost.git"}
 
   :dependencies [[org.clojure/clojure "1.8.0"]
+                 [samsara/trackit-core "0.7.1"]
+                 [com.brunobonacci/safely "0.5.0-alpha4"]
                  [com.brunobonacci/clj-sophia "0.5.1"]
                  [com.brunobonacci/where "0.5.0"]
                  [pandect "0.6.1"]

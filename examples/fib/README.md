@@ -59,7 +59,8 @@ Here is the latency profile for the `fibonacci` service with and without `ring-b
 
 ![comparison](./boost.png)
 
-Computed via: `wrk -t2 -c100 -d180s -R500 -L http://127.0.0.1:3000/fib/10000` via a *30 seconds cache*.
+Computed via: `wrk -t2 -c100 -d180s -R500 -L http://127.0.0.1:3000/fib/10000`
+with a *30 seconds cache*.
 
 As you can see the difference of a slow service with and without `ring-boost` it
 is huge. The slower is the service and the more intensive is the computation

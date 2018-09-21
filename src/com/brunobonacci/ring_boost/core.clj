@@ -1,14 +1,13 @@
 (ns com.brunobonacci.ring-boost.core
-  (:require [clojure.pprint :refer [pprint]]
+  (:require [clojure.java.io :as io]
+            [clojure.pprint :refer [pprint]]
             [clojure.string :as str]
             [com.brunobonacci.sophia :as sph]
-            [where.core :refer [where]]
-            [clojure.java.io :as io]
             [pandect.algo.md5 :as digest]
-            [clojure.tools.logging :as log])
-  (:import [java.io InputStream ByteArrayOutputStream
-            ByteArrayInputStream]))
-
+            [safely.core :refer [safely]]
+            [samsara.trackit :refer [track-rate]]
+            [where.core :refer [where]])
+  (:import [java.io ByteArrayInputStream ByteArrayOutputStream InputStream]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                                                                            ;;
@@ -70,9 +69,10 @@
 (defn load-version
   [config]
   (assoc config :boost-version
-         (try
+         (safely
            (str/trim (slurp (io/resource "ring-boost.version")))
-           (catch Exception _ "v???"))))
+           :on-error
+           :default "v???")))
 
 
 
@@ -289,7 +289,12 @@
     (let [key* (:key-maker cacheable-profile)
           key  (key* req)]
       (assoc ctx
-             :cached (sph/get-value (:cache boost) "cache" key)
+             :cached (safely
+                      (sph/get-value (:cache boost) "cache" key)
+                      :on-error
+                      :message  "ring-boost cache lookup"
+                      :track-as "ring_boost.cache.lookup"
+                      :default  nil)
              :cache-key key))))
 
 
@@ -317,28 +322,52 @@
 
 
 
+(defn- safe-metric-name
+  [name]
+  (-> (str name)
+     (str/replace #"[^a-zA-Z0-9_]+" "_")
+     (str/replace #"^_+|_+$" "")))
+
+
+
+(defn track-cache-metrics
+  [{:keys [cacheable-profile cached resp-cacheable?] :as ctx}]
+  (if cacheable-profile
+    (let [profile (safe-metric-name (:profile cacheable-profile))]
+      (if cached
+        (track-rate (str "ring_boost.profile." profile ".hit_rate"))
+        (track-rate (str "ring_boost.profile." profile ".miss_rate")))
+      (when (and (not cached) (not resp-cacheable?))
+        (track-rate (str "ring_boost.profile." profile ".not_cacheable_rate"))))
+    (track-rate "ring_boost.no_profile.rate"))
+  ctx)
+
+
+
 (defn- increment-stats-by!
   "increments the stats for a given profile/key by the given amount"
   [boost {:keys [profile key hit miss not-cacheable]}]
-  (try
-    (sph/transact! (:cache boost)
-      (fn [tx]
-        (sph/upsert-value! tx "stats" (str profile ":" key)
-                           (fnil (partial merge-with +) {:profile profile
-                                                   :key key
-                                                   :hit  0
-                                                   :miss 0
-                                                   :not-cacheable 0})
-                           {:hit hit :miss miss :not-cacheable not-cacheable})
+  (safely
+   (sph/transact! (:cache boost)
+     (fn [tx]
+       (sph/upsert-value! tx "stats" (str profile ":" key)
+                          (fnil (partial merge-with +) {:profile profile
+                                                  :key key
+                                                  :hit  0
+                                                  :miss 0
+                                                  :not-cacheable 0})
+                          {:hit hit :miss miss :not-cacheable not-cacheable})
 
-        (sph/upsert-value! tx "stats" (str profile)
-                           (fnil (partial merge-with +) {:profile profile
-                                                   :hit  0
-                                                   :miss 0
-                                                   :not-cacheable 0})
-                           {:hit hit :miss miss :not-cacheable not-cacheable})))
-    (catch Exception x
-      (log/warn x "ring-boost couldn't update statistics."))))
+       (sph/upsert-value! tx "stats" (str profile)
+                          (fnil (partial merge-with +) {:profile profile
+                                                  :hit  0
+                                                  :miss 0
+                                                  :not-cacheable 0})
+                          {:hit hit :miss miss :not-cacheable not-cacheable})))
+   :on-error
+   :max-retry 3
+   :message  "ring-boost update statistics"
+   :track-as "ring_boost.stats.update"))
 
 
 
@@ -370,7 +399,7 @@
 (defn fetch-cache-stats
   [{:keys [boost cacheable-profile cache-key req cached resp-cacheable?] :as ctx}]
   (if (and cacheable-profile (get-in req [:headers "x-cache-debug"]))
-    (try
+    (safely
       (let [profile (:profile cacheable-profile)
             stats   (sph/get-value (:cache boost) "stats"
                                    (str profile ":" cache-key)
@@ -389,8 +418,10 @@
       ;; if transaction fail, ignore stats update
       ;; faster times are more important than accurate
       ;; stats. Maybe consider to update stats async.
-      (catch Exception _
-        ctx))
+      :on-error
+      :default ctx
+      :message  "ring-boost fetch statistics"
+      :track-as "ring_boost.stats.fecth")
     ctx))
 
 
@@ -414,11 +445,15 @@
   ;; and this response didn't come from the cache
   ;; but it was fetched and the response is cacheable
   ;; then save it into the cache
-  (let [store? (and cacheable-profile (not cached) resp-cacheable?)]
-    (when store?
-      (let [data {:timestamp (System/currentTimeMillis) :payload resp}]
-        (sph/set-value! (:cache boost) "cache" cache-key data)))
-    (assoc ctx :stored store?)))
+  (let [stored? (when (and cacheable-profile (not cached) resp-cacheable?)
+                  (let [data {:timestamp (System/currentTimeMillis) :payload resp}]
+                    (safely
+                     (sph/set-value! (:cache boost) "cache" cache-key data)
+                     :on-error
+                     :message  "ring-boost cache store"
+                     :track-as "ring_boost.cache.store"
+                     :default  false)))]
+    (assoc ctx :stored (boolean stored?))))
 
 
 
@@ -511,6 +546,7 @@
    {:name :response-body-normalize  :call response-body-normalize}
    {:name :add-cache-headers        :call add-cache-headers }
    {:name :cache-store!             :call cache-store!      }
+   {:name :track-cache-metrics      :call track-cache-metrics}
    {:name :update-cache-stats       :call update-cache-stats}
    {:name :fetch-cache-stats        :call fetch-cache-stats }
    {:name :debug-headers            :call debug-headers     }
