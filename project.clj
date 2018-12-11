@@ -13,9 +13,9 @@
   :scm {:name "git" :url "https://github.com/BrunoBonacci/ring-boost.git"}
 
   :dependencies [[org.clojure/clojure "1.8.0"]
-                 [samsara/trackit-core "0.7.1"]
-                 [com.brunobonacci/safely "0.5.0-alpha4"]
-                 [com.brunobonacci/clj-sophia "0.5.1"]
+                 [samsara/trackit-core "0.8.0"]
+                 [com.brunobonacci/safely "0.5.0-alpha5"]
+                 [com.brunobonacci/clj-sophia "0.5.2"]
                  [com.brunobonacci/where "0.5.0"]
                  [pandect "0.6.1"]
                  [org.clojure/tools.logging "0.4.1"]]
@@ -24,7 +24,7 @@
 
   :jvm-opts ["-server"]
 
-  :profiles {:dev {:dependencies [[midje "1.9.2-alpha3"]
+  :profiles {:dev {:dependencies [[midje "1.9.4"]
                                   [org.clojure/test.check "0.9.0"]
                                   [criterium "0.4.4"]
                                   [org.slf4j/slf4j-log4j12 "1.7.25"]]
